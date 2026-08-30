@@ -1,0 +1,265 @@
+# RANKPILOT AI — COMPLETE SYSTEM FILE (PLAN + SKILL + ARCHITECTURE)
+
+---
+
+# 1. PROJECT OVERVIEW
+
+RankPilot AI is an AI-powered SaaS platform for:
+- SEO optimization
+- AEO (Answer Engine Optimization)
+- AI content generation
+- Keyword research
+- Competitor analysis
+- Website audit
+- AI visibility tracking (Google + ChatGPT + Gemini + Perplexity)
+
+Goal:
+Build a modern SaaS that helps websites rank in both:
+- Traditional search engines (Google, Bing)
+- AI search engines (ChatGPT, Gemini, Claude, AI Overviews)
+
+---
+
+# 2. CORE USERS
+
+- SEO agencies
+- Freelancers
+- Bloggers
+- E-commerce owners
+- UAE local businesses not only uae required custom loacations
+
+- Marketing teams
+- Developers
+
+---
+
+# 3. CORE FEATURES
+
+## 3.1 Authentication
+- Email/password login
+- Google OAuth
+- Role-based access (User/Admin)
+
+---
+
+## 3.2 SEO Dashboard
+- SEO score (0–100)
+- Website health
+- Core Web Vitals summary
+- Meta analysis
+- Indexing status
+- Mobile performance
+
+---
+
+## 3.3 SEO Audit Tool
+- Missing meta tags
+- Broken links
+- Image optimization issues
+- Heading structure analysis
+- Sitemap + robots.txt check
+- Page speed insights
+
+Output:
+- Score + Fix list + Priority ranking
+
+---
+
+## 3.4 AEO Engine (AI Search Optimization)
+Optimizes content for:
+- ChatGPT
+- Gemini
+- Claude
+- Perplexity
+- Google AI Overview
+
+Features:
+- FAQ schema generator
+- Featured snippet optimization
+- Voice search optimization
+- Conversational content rewrite
+- AI readability score
+
+---
+
+## 3.5 AI Content Generator
+- Blogs
+- Landing pages
+- Service pages
+- Product descriptions
+- FAQs
+- Meta titles + descriptions
+
+Supports:
+- English + Arabic
+- SEO keyword insertion
+- Tone selection
+
+---
+
+## 3.6 Keyword Research Tool
+- Search volume
+- Keyword difficulty
+- Long-tail suggestions
+- UAE local keywords
+- Competitor keyword gaps
+
+---
+
+## 3.7 Competitor Analysis
+- SEO comparison
+- Keyword overlap
+- Backlink analysis
+- Content gap analysis
+- AI visibility comparison
+
+---
+
+## 3.8 Analytics Dashboard
+- Keyword ranking charts
+- Traffic estimation
+- CTR tracking
+- AI visibility score trend
+- PDF report export
+
+---
+
+## 3.9 Subscription System
+Plans:
+- Free (limited audits)
+- Pro (full tools)
+- Agency (team + white-label)
+
+Payments:
+- Stripe integration
+
+---
+
+## 3.10 Admin Panel
+- Manage users
+- Monitor API usage
+- Control subscriptions
+- System analytics
+
+---
+
+# 4. TECHNOLOGY STACK
+
+Frontend:
+- Next.js 15
+- React
+- Tailwind CSS
+- Framer Motion
+
+Backend:
+- Supabase (Auth + DB)
+- PostgreSQL
+
+AI Layer:
+- OpenAI API
+
+Hosting:
+- Vercel
+
+---
+
+# 5. DATABASE STRUCTURE
+
+## Users
+- id
+- name
+- email
+- role
+- plan
+- created_at
+
+---
+
+## Projects
+- id
+- user_id
+- website_url
+- seo_score
+- aeo_score
+- created_at
+
+---
+
+## Keywords
+- id
+- project_id
+- keyword
+- volume
+- difficulty
+
+---
+
+## Reports
+- id
+- project_id
+- seo_data_json
+- created_at
+
+---
+
+# 6. UI/UX SYSTEM
+
+Style:
+- Modern SaaS (Ahrefs + Notion + Linear)
+- Dark mode default
+- Glassmorphism cards
+- Smooth animations
+- Clean spacing
+
+Components:
+- Sidebar
+- Dashboard cards
+- Tables
+- Charts
+- Modals
+- Forms
+
+Rules:
+- Minimal clicks
+- Auto-save inputs
+- Skeleton loading UI
+- Mobile-first design
+
+---
+
+# 7. SEO + AEO STRATEGY
+
+## SEO Rules
+- Meta title ≤ 60 characters
+- Meta description ≤ 155 characters
+- Proper heading hierarchy
+- Internal linking suggestions
+
+## AEO Rules
+- Direct answer first
+- FAQ format content
+- Voice-search friendly
+- AI snippet optimization
+
+---
+
+# 8. SKILL ENGINE (OPTIMIZATION CORE)
+
+## 8.1 Token Efficiency Rules
+- Remove filler words
+- Prefer structured output
+- Use bullet logic over paragraphs
+- Avoid repetition
+- Compress semantic meaning
+
+---
+
+## 8.2 Output Format Rule
+Prefer:
+
+```json
+{
+  "score": 85,
+  "issues": ["missing meta", "slow page speed"],
+  "fixes": ["add meta description", "compress images"]
+}

@@ -1,0 +1,67 @@
+# Deployment Readiness: Dashboard Implementation Plan
+
+After reviewing the current status of the dashboard, I found that the UI looks fantastic, but almost all the data is currently **mocked (hardcoded)**. To make this application ready for deployment and production use, we need to connect these features to real databases and third-party APIs.
+
+Below is the step-by-step implementation plan to replace the mock data and make each dashboard tab fully functional.
+
+## Open Questions
+> [!IMPORTANT]
+> **Database Selection:** We are currently using Firebase for Auth. Do you want to continue using Firestore (Firebase) for the database to store user projects, saved schemas, and keywords, or would you prefer a relational DB like Supabase/PostgreSQL?
+>
+> **SEO APIs:** Building a custom web scraper for the "Audit Scanner" and "Keyword Research" takes significant time. Should we integrate a third-party API like **DataForSEO** or **Ahrefs API**, or do you want a custom lightweight Node.js scraper?
+
+---
+
+## 1. Authentication & Security
+**Current Status:** Has a guest fallback.
+**Required Actions:**
+- [ ] Remove the "Guest User" fallback in `dashboard/page.tsx` so unauthorized users are strictly redirected to `/login`.
+- [ ] Implement Next.js `middleware.ts` to protect the `/dashboard` route at the server level, ensuring users cannot even load the dashboard JS without a valid session.
+
+## 2. Database Integration (Projects & Overview)
+**Current Status:** `seoScore`, `aeoScore`, and `auditIssues` are hardcoded in React state.
+**Required Actions:**
+- [ ] Create a `projects` collection in the database.
+- [ ] On the dashboard load, fetch the user's active project data (Domain URL, last scan scores).
+- [ ] Update the `Overview` tab to display real historical data pulled from the database instead of the hardcoded `76` and `62` scores.
+
+## 3. SEO Site Audit Scanner
+**Current Status:** The "Run Scan" button just fakes a progress bar `setInterval`.
+**Required Actions:**
+- [ ] Build a new backend route: `POST /api/scan`.
+- [ ] Integrate a scraping library (like Cheerio) or an SEO API to fetch the user's `domainUrl`.
+- [ ] Analyze meta tags, headings, page speed, and schema presence.
+- [ ] Save the audit results and newly calculated scores to the database.
+
+## 4. AI Semantic Composer (Generator)
+**Current Status:** Uses OpenRouter API successfully, but content disappears on refresh.
+**Required Actions:**
+- [ ] Add a "Save to Project" button after content is generated.
+- [ ] Create a `saved_content` database table/collection.
+- [ ] Allow users to view past generated articles.
+
+## 5. AEO Schema Builder
+**Current Status:** Generates raw JSON-LD text for copying.
+**Required Actions:**
+- [ ] Connect the output to the database so users can save their generated schemas.
+- [ ] (Optional) Provide a `<script>` embed code snippet specific to their domain.
+
+## 6. Keyword Research
+**Current Status:** Table is hardcoded with "seo agency dubai", etc.
+**Required Actions:**
+- [ ] Build `GET /api/keywords`.
+- [ ] Connect to a keyword volume API (e.g., DataForSEO or Google Ads API) to fetch live Search Volume and Keyword Difficulty metrics based on user input.
+
+## 7. Competitor Analysis
+**Current Status:** Completely empty placeholder.
+**Required Actions:**
+- [ ] Create an input for users to add competitor URLs.
+- [ ] Run the same backend `POST /api/scan` tool against competitors to generate a side-by-side scorecard comparison.
+
+---
+
+## Proposed Execution Order
+If approved, I suggest we tackle this in the following phases:
+1. **Phase 1: Database Setup & Auth Guard** (Securing the app and storing basic user projects).
+2. **Phase 2: The Audit Scanner** (Replacing the fake progress bar with a real domain scanner).
+3. **Phase 3: Keywords & Content Saving** (Connecting live keyword APIs and saving AI generations).
