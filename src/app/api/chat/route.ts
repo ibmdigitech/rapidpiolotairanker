@@ -104,8 +104,11 @@ async function callLLM(
   model: string,
   messages: { role: string; content: string }[],
   tokenLimits: Record<string, number> | undefined,
-  extraHeaders?: Record<string, string>
+  extraHeaders?: Record<string, string>,
+  extraBody?: Record<string, unknown>
 ): Promise<{ response: Response; text: string }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 60000);
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
     headers: {
@@ -117,8 +120,11 @@ async function callLLM(
       model,
       messages,
       ...tokenLimits,
+      ...(extraBody ? { extra_body: extraBody } : {}),
     }),
+    signal: controller.signal,
   });
+  clearTimeout(timeout);
 
   const text = await response.text();
   return { response, text };
@@ -161,6 +167,9 @@ export async function POST(request: Request) {
     if (typeof body.maxWords === "number" && body.maxWords > 0) {
       tokenLimits.max_tokens = Math.round(body.maxWords * 1.3);
     }
+    // Always cap output so requests fit the account's credit balance
+    // (OpenRouter otherwise defaults to the model's full context window).
+    if (!tokenLimits.max_tokens) tokenLimits.max_tokens = 2048;
 
     const userPrompt = messages[messages.length - 1]?.content || "";
     const isArabic = /[\u0600-\u06FF]/.test(userPrompt) || userPrompt.toLowerCase().includes("arabic");
@@ -172,23 +181,26 @@ export async function POST(request: Request) {
     }
 
     // ── Build the ordered list of LLM endpoints to try ──────────────────────
-    // NVIDIA's API is tried first (it is in the account's allowed-providers list and
-    // is OpenAI-compatible), then OpenRouter as a fallback chain.
-    type Endpoint = { baseUrl: string; key: string; model: string; headers?: Record<string, string> };
+    // OpenRouter is tried first (MiniMax M2.7 works on this account), with NVIDIA
+    // as a fallback (its raw API can be slow, so it runs last).
+    type Endpoint = {
+      baseUrl: string;
+      key: string;
+      model: string;
+      headers?: Record<string, string>;
+      extraBody?: Record<string, unknown>;
+      tokenLimits?: Record<string, number>;
+    };
     const endpoints: Endpoint[] = [];
-
-    const nvidiaKey = process.env.NVIDIA_API_KEY;
-    const nvidiaModel = process.env.NVIDIA_MODEL || "deepseek-ai/deepseek-v4-pro-0813";
-    const nvidiaBase = process.env.NVIDIA_BASE_URL || "https://integrate.api.nvidia.com/v1";
-    if (nvidiaKey) {
-      endpoints.push({ baseUrl: nvidiaBase, key: nvidiaKey, model: nvidiaModel });
-    }
 
     const openrouterKey = process.env.OPENROUTER_COMPOSER_API_KEY || process.env.OPENROUTER_API_KEY;
     const configuredModel = process.env.OPENROUTER_MODEL || "auto";
     const referer = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
     if (openrouterKey && !openrouterKey.includes("...")) {
+      // MiniMax M2.7/M2.5/M2.1 are served by the minimax first-party provider, which
+      // this account permits — these generate real answers without the guardrail block.
       const providerModels: Record<string, string[]> = {
+        "minimax": ["minimax/minimax-m2.7", "minimax/minimax-m2.5", "minimax/minimax-m2.1"],
         "google": ["google/gemini-3.7-flash"],
         "openai": ["openai/gpt-5.6-luna", "openai/gpt-5.6-luna-pro"],
         "anthropic": ["anthropic/claude-opus-5-fast"],
@@ -205,8 +217,24 @@ export async function POST(request: Request) {
           key: openrouterKey,
           model: m,
           headers: { "HTTP-Referer": referer, "X-Title": "RankPilot AI" },
+          tokenLimits,
         });
       }
+    }
+
+    const nvidiaKey = process.env.NVIDIA_API_KEY;
+    const nvidiaModel = process.env.NVIDIA_MODEL || "deepseek-ai/deepseek-v4-pro-0813";
+    const nvidiaBase = process.env.NVIDIA_BASE_URL || "https://integrate.api.nvidia.com/v1";
+    if (nvidiaKey) {
+      // Cap output so the request doesn't hang (NVIDIA's raw REST API rejects `extra_body`).
+      const nvidiaTokenLimits: Record<string, number> = { ...tokenLimits };
+      if (!nvidiaTokenLimits.max_tokens) nvidiaTokenLimits.max_tokens = 4096;
+      endpoints.push({
+        baseUrl: nvidiaBase,
+        key: nvidiaKey,
+        model: nvidiaModel,
+        ...(Object.keys(nvidiaTokenLimits).length ? { tokenLimits: nvidiaTokenLimits } : {}),
+      });
     }
 
     if (endpoints.length === 0) {
@@ -225,7 +253,15 @@ export async function POST(request: Request) {
     for (const ep of endpoints) {
       let callResult: { response: Response; text: string };
       try {
-        callResult = await callLLM(ep.baseUrl, ep.key, ep.model, messages, tokenLimits, ep.headers);
+        callResult = await callLLM(
+          ep.baseUrl,
+          ep.key,
+          ep.model,
+          messages,
+          ep.tokenLimits || tokenLimits,
+          ep.headers,
+          ep.extraBody
+        );
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unknown error";
         chatHistory.push({ timestamp: new Date().toISOString(), model: ep.model, status: "error", networkError: true, error: message });
@@ -236,7 +272,8 @@ export async function POST(request: Request) {
       const { response, text } = callResult;
 
       if (response.ok) {
-        const data = await response.json();
+        // callLLM already read the body via response.text(); parse that instead of re-reading.
+        const data = JSON.parse(text);
         chatHistory.push({ timestamp: new Date().toISOString(), model: ep.model, status: "success" });
         console.log(`[chat] success with model ${ep.model}`);
         return NextResponse.json(data);
