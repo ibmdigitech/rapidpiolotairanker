@@ -1,6 +1,7 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { initializeFirestore, getFirestore, Firestore } from "firebase/firestore";
+import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY?.trim(),
@@ -35,6 +36,20 @@ try {
   db = initializeFirestore(app, { experimentalForceLongPolling: true } as any);
 } catch {
   db = getFirestore(app);
+}
+
+// Enable App Check in production to prevent API abuse
+// The reCAPTCHA v3 provider helps identify and block unauthorized usage
+// of your Firebase resources. Only enabled when NEXT_PUBLIC_RECAPTCHA_SITE_KEY is set.
+if (typeof window !== "undefined" && process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY) {
+  try {
+    initializeAppCheck(app, {
+      provider: new ReCaptchaV3Provider(process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY),
+      isTokenAutoRefreshEnabled: true,
+    });
+  } catch (e) {
+    console.error("App Check init failed:", e);
+  }
 }
 
 export { app, auth, db };

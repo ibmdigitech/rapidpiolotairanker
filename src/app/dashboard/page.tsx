@@ -4,13 +4,16 @@ import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { onAuthStateChanged, signOut, User } from "firebase/auth";
 import { auth, db } from "@/lib/firebase";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, collection, getDocs } from "firebase/firestore";
 import {
   Rocket, Search, Brain, PenTool, BarChart3, LineChart,
   Settings, LogOut, CheckCircle2, AlertTriangle, ShieldCheck,
   Plus, AlertCircle, RefreshCw, Layers, Bookmark, Trash2, Copy, Check, Edit2, Save,
-  Download, Code2, FileJson, ChevronDown, X, Eye, ClipboardCheck, Info, Loader2
-} from "lucide-react";
+  Download, Code2, FileJson, ChevronDown, X, Eye, ClipboardCheck, Info, Loader2,
+  DollarSign, BadgeDollarSign, ToggleLeft, ToggleRight, PlusCircle, MousePointer, TrendingUp
+  } from "lucide-react";
+import GlobalLocationSelector from "@/components/GlobalLocationSelector";
+import { InlineAdBanner } from "@/components/ads";
 import {
   SCHEMA_TYPES, SchemaType, FaqItem, createEmptyFaqItem,
   getFieldsForType, buildSchema, validateSchema,
@@ -99,6 +102,13 @@ export default function Dashboard() {
   const [competitorData, setCompetitorData] = useState<CompetitorData | null>(null);
   const [competitorError, setCompetitorError] = useState("");
 
+  // Monetization State
+  const [monetizationSettings, setMonetizationSettings] = useState<Record<string, unknown>>({});
+  const [ads, setAds] = useState<Record<string, unknown>[]>([]);
+  const [monetizationTab, setMonetizationTab] = useState("overview");
+  const [adForm, setAdForm] = useState<Record<string, unknown>>({});
+  const [consentGiven, setConsentGiven] = useState<Record<string, boolean>>({ necessary: true, analytics: false, advertising: false });
+
   const router = useRouter();
 
   // Project data state
@@ -154,6 +164,30 @@ export default function Dashboard() {
     });
     return () => unsubscribe();
   }, [router]);
+
+  // Load monetization settings and ads
+  useEffect(() => {
+    if (!user || !('uid' in user)) return;
+    const unsubSettings = () => {};
+    const unsubAds = () => {};
+    (async () => {
+      try {
+        const settingsRef = doc(db, "monetizationSettings", user.uid);
+        const settingsSnap = await getDoc(settingsRef);
+        if (settingsSnap.exists()) setMonetizationSettings(settingsSnap.data() as Record<string, unknown>);
+
+        const adsRef = collection(db, "advertisements");
+        const adsSnap = await getDocs(adsRef);
+        const adList = adsSnap.docs
+          .filter((d) => !(d.data() as Record<string, unknown>).deleted)
+          .map((d) => ({ id: d.id, ...d.data() } as Record<string, unknown>));
+        setAds(adList);
+      } catch (error) {
+        console.error("Error loading monetization:", error);
+      }
+    })();
+    return () => { unsubSettings(); unsubAds(); };
+  }, [user]);
 
   const handleLogout = async () => {
     await signOut(auth);
@@ -411,6 +445,33 @@ export default function Dashboard() {
     URL.revokeObjectURL(url);
   };
 
+  // ─── Monetization Handlers ───────────────────────────────────────────────
+  const saveSetting = async (key: string, value: unknown) => {
+    if (!user || !('uid' in user)) return;
+    const updated = { ...monetizationSettings, [key]: value, updatedAt: new Date().toLocaleString() };
+    setMonetizationSettings(updated);
+    const userDocRef = doc(db, "monetizationSettings", user.uid);
+    await setDoc(userDocRef, updated, { merge: true });
+  };
+
+  const handleSaveAd = async () => {
+    if (!user || !('uid' in user)) return;
+    const adId = (adForm.id as string) || `ad_${Date.now()}`;
+    const adData: Record<string, unknown> = { ...adForm, id: adId, updatedAt: new Date().toLocaleString() };
+    if (!(adData.name as string)) return;    const existing = ads.find((a: Record<string, unknown>) => a.id === adId);
+    const newAds = existing ? ads.map((a: Record<string, unknown>) => a.id === adId ? adData : a) : [...ads, adData];
+    setAds(newAds);
+    await setDoc(doc(db, "advertisements", adId), adData, { merge: true });
+    setAdForm({});
+  };
+
+  const deleteAd = async (id: string) => {
+    if (!user || !('uid' in user)) return;
+    const newAds = ads.filter((a: Record<string, unknown>) => a.id !== id);
+    setAds(newAds);
+    await setDoc(doc(db, "advertisements", id), { deleted: true }, { merge: true });
+  };
+
   const handleSaveSchema = async () => {
     if (!generatedSchema || !user || !('uid' in user)) return;
     const label = selectedSchemaType === "FAQ"
@@ -515,13 +576,14 @@ export default function Dashboard() {
 
           {/* Navigation Links */}
           <nav className="p-2 md:p-4 flex overflow-x-auto md:flex-col space-x-2 md:space-x-0 md:space-y-1.5 scrollbar-hide">
-            {[
+             {[
               { id: "overview", label: "Dashboard Overview", icon: Layers },
               { id: "audit", label: "SEO Site Audit", icon: Search },
               { id: "aeo", label: "AEO Optimization", icon: Brain },
               { id: "generator", label: "AI Semantic Composer", icon: PenTool },
               { id: "keywords", label: "Keyword Research", icon: BarChart3 },
               { id: "competitors", label: "Competitor Analysis", icon: LineChart },
+              { id: "monetization", label: "Monetization", icon: DollarSign },
             ].map((tab) => {
               const Icon = tab.icon;
               return (
@@ -591,6 +653,9 @@ export default function Dashboard() {
         {/* Overview Tab Content */}
         {activeTab === "overview" && (
           <div className="space-y-8">
+            {/* Inline Ad for Free Users */}
+            <InlineAdBanner placement="dashboard_overview_top" />
+
             {/* Score Grid Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               
@@ -1476,6 +1541,9 @@ ${generatedSchema}
                     <span className="text-xs font-bold uppercase text-accent">Your Project</span>
                     <span className="text-xs text-muted-foreground">{domainUrl}</span>
                   </div>
+                  <div className="mb-4">
+                    <GlobalLocationSelector />
+                  </div>
                   <div className="grid grid-cols-2 gap-4 mb-6">
                     <div className="p-4 bg-neutral-900 rounded-xl">
                       <p className="text-[10px] text-muted-foreground uppercase">SEO Score</p>
@@ -1528,6 +1596,322 @@ ${generatedSchema}
           </div>
         )}
       </main>
+
+      {/* Monetization Tab */}
+      {activeTab === "monetization" && (
+        <main className="flex-grow p-4 md:p-8 overflow-y-auto max-h-screen no-scrollbar">
+          <header className="mb-6 md:mb-8 pb-6 border-b border-white/5">
+            <h1 className="font-heading font-bold text-2xl text-white">Monetization & Ad Management</h1>
+            <p className="text-xs text-muted-foreground mt-1">Configure advertising platforms, placements, and consent</p>
+          </header>
+
+          <div className="space-y-6">
+            {/* Overview Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+              {[
+                { label: "Est. Revenue", value: "$0.00", sub: "Analytics connection required", icon: DollarSign },
+                { label: "Impressions", value: "0", sub: "Analytics connection required", icon: Eye },
+                { label: "Clicks", value: "0", sub: "Analytics connection required", icon: MousePointer },
+                { label: "CTR", value: "0%", sub: "Analytics connection required", icon: TrendingUp },
+                { label: "Active Placements", value: String(ads.filter((a: Record<string, unknown>) => a.status === "active").length), sub: `${ads.length} total ads`, icon: BadgeDollarSign },
+              ].map((card) => {
+                const Icon = card.icon;
+                return (
+                  <div key={card.label} className="glass-card rounded-2xl p-4 border-white/5">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase">{card.label}</p>
+                      <Icon className="h-4 w-4 text-accent" />
+                    </div>
+                    <p className="text-2xl font-heading font-black text-white">{card.value}</p>
+                    <p className="text-[10px] text-muted-foreground mt-1">{card.sub}</p>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Sub-tabs */}
+            <div className="flex overflow-x-auto space-x-2 border-b border-white/5 pb-2">
+              {["overview", "adsense", "meta", "instagram", "placements", "analytics", "consent"].map((tab) => (
+                <button key={tab} onClick={() => setMonetizationTab(tab)} className={`px-3 py-2 rounded-lg text-xs font-semibold capitalize whitespace-nowrap ${monetizationTab === tab ? "bg-primary/10 text-white border border-primary/20" : "text-muted-foreground hover:text-white hover:bg-white/5"}`}>
+                  {tab === "adsense" ? "Google AdSense" : tab === "meta" ? "Meta / Facebook" : tab}
+                </button>
+              ))}
+            </div>
+
+            {/* Overview Sub-tab */}
+            {monetizationTab === "overview" && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="glass-card rounded-2xl p-6 border-white/5">
+                  <h3 className="font-heading font-bold text-lg text-white mb-4">Platform Status</h3>
+                  <div className="space-y-3">
+                    {[
+                      { name: "Google AdSense", enabled: (monetizationSettings.adsenseEnabled as boolean) || false, id: monetizationSettings.adsensePublisherId as string || "" },
+                      { name: "Meta / Facebook", enabled: (monetizationSettings.metaEnabled as boolean) || false, id: monetizationSettings.metaPixelId as string || "" },
+                      { name: "Instagram", enabled: (monetizationSettings.instagramEnabled as boolean) || false, id: monetizationSettings.instagramBusinessAccountId as string || "" },
+                      { name: "Custom Ads", enabled: (monetizationSettings.customAdsEnabled as boolean) || false, id: `${ads.length} ads` },
+                    ].map((platform) => (
+                      <div key={platform.name} className="flex items-center justify-between p-3 rounded-xl bg-neutral-900 border border-white/5">
+                        <div>
+                          <p className="text-xs font-semibold text-white">{platform.name}</p>
+                          <p className="text-[10px] text-muted-foreground">{platform.id || "Not configured"}</p>
+                        </div>
+                        <span className={`px-2 py-1 rounded-lg text-[10px] font-bold ${platform.enabled ? "bg-emerald-500/10 text-emerald-400" : "bg-neutral-800 text-neutral-400"}`}>
+                          {platform.enabled ? "Enabled" : "Disabled"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="glass-card rounded-2xl p-6 border-white/5">
+                  <h3 className="font-heading font-bold text-lg text-white mb-4">Placements</h3>
+                  <p className="text-xs text-muted-foreground mb-4">Active ad placements across your site</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    {["header", "hero_bottom", "content_top", "content_middle", "content_bottom", "sidebar", "footer", "mobile_sticky", "desktop_sticky"].map((placement) => {
+                      const count = ads.filter((a: Record<string, unknown>) => a.placement === placement && a.status === "active").length;
+                      return (
+                        <div key={placement} className="p-3 rounded-xl bg-neutral-900 border border-white/5 flex items-center justify-between">
+                          <span className="text-xs text-white capitalize">{placement.replace("_", " ")}</span>
+                          <span className="text-[10px] text-muted-foreground">{count} ad{count !== 1 ? "s" : ""}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* AdSense Sub-tab */}
+            {monetizationTab === "adsense" && (
+              <div className="glass-card rounded-2xl p-6 border-white/5 space-y-6">
+                <h3 className="font-heading font-bold text-lg text-white">Google AdSense</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-white">Enable Google AdSense</span>
+                      <button onClick={() => saveSetting("adsenseEnabled", !(monetizationSettings.adsenseEnabled as boolean))} className={`p-2 rounded-lg ${(monetizationSettings.adsenseEnabled as boolean) ? "bg-primary/20 text-primary" : "bg-neutral-800 text-neutral-400"}`}>
+                        {(monetizationSettings.adsenseEnabled as boolean) ? <ToggleRight className="h-5 w-5" /> : <ToggleLeft className="h-5 w-5" />}
+                      </button>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-muted-foreground uppercase mb-1">Publisher ID</label>
+                      <input type="text" value={(monetizationSettings.adsensePublisherId as string) || ""} onChange={(e) => saveSetting("adsensePublisherId", e.target.value)} placeholder="ca-pub-XXXXXXXXXXXXXXXX" className="w-full bg-neutral-900 border border-white/5 rounded-xl px-4 py-2 text-xs text-white focus:outline-none" />
+                      <p className="text-[10px] text-muted-foreground mt-1">Format: ca-pub-XXXXXXXXXX</p>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-muted-foreground uppercase mb-1">Client ID</label>
+                      <input type="text" value={(monetizationSettings.adsenseClientId as string) || ""} onChange={(e) => saveSetting("adsenseClientId", e.target.value)} placeholder="ca-pub-XXXXXXXXXXXXXXXX" className="w-full bg-neutral-900 border border-white/5 rounded-xl px-4 py-2 text-xs text-white focus:outline-none" />
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-white">Auto Ads</span>
+                      <button onClick={() => saveSetting("adsenseAutoAds", !(monetizationSettings.adsenseAutoAds as boolean))} className={`p-2 rounded-lg ${(monetizationSettings.adsenseAutoAds as boolean) ? "bg-primary/20 text-primary" : "bg-neutral-800 text-neutral-400"}`}>
+                        {(monetizationSettings.adsenseAutoAds as boolean) ? <ToggleRight className="h-5 w-5" /> : <ToggleLeft className="h-5 w-5" />}
+                      </button>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-white">Responsive Ads</span>
+                      <button onClick={() => saveSetting("adsenseResponsive", !(monetizationSettings.adsenseResponsive as boolean))} className={`p-2 rounded-lg ${(monetizationSettings.adsenseResponsive as boolean) ? "bg-primary/20 text-primary" : "bg-neutral-800 text-neutral-400"}`}>
+                        {(monetizationSettings.adsenseResponsive as boolean) ? <ToggleRight className="h-5 w-5" /> : <ToggleLeft className="h-5 w-5" />}
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-muted-foreground uppercase mb-1">AdSense Script / Configuration</label>
+                    <textarea value={(monetizationSettings.adsenseScript as string) || ""} onChange={(e) => saveSetting("adsenseScript", e.target.value)} rows={8} placeholder="Paste AdSense script or configuration here..." className="w-full bg-neutral-900 border border-white/5 rounded-xl px-4 py-2 text-xs text-white focus:outline-none font-mono" />
+                    <p className="text-[10px] text-muted-foreground mt-1">Script is stored separately and loaded only when enabled.</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Meta Sub-tab */}
+            {monetizationTab === "meta" && (
+              <div className="glass-card rounded-2xl p-6 border-white/5 space-y-6">
+                <h3 className="font-heading font-bold text-lg text-white">Meta / Facebook</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-white">Enable Meta Integration</span>
+                      <button onClick={() => saveSetting("metaEnabled", !(monetizationSettings.metaEnabled as boolean))} className={`p-2 rounded-lg ${(monetizationSettings.metaEnabled as boolean) ? "bg-primary/20 text-primary" : "bg-neutral-800 text-neutral-400"}`}>
+                        {(monetizationSettings.metaEnabled as boolean) ? <ToggleRight className="h-5 w-5" /> : <ToggleLeft className="h-5 w-5" />}
+                      </button>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-muted-foreground uppercase mb-1">Meta Pixel ID</label>
+                      <input type="text" value={(monetizationSettings.metaPixelId as string) || ""} onChange={(e) => saveSetting("metaPixelId", e.target.value)} placeholder="1234567890" className="w-full bg-neutral-900 border border-white/5 rounded-xl px-4 py-2 text-xs text-white focus:outline-none" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-muted-foreground uppercase mb-1">Meta App ID</label>
+                      <input type="text" value={(monetizationSettings.metaAppId as string) || ""} onChange={(e) => saveSetting("metaAppId", e.target.value)} placeholder="Meta App ID" className="w-full bg-neutral-900 border border-white/5 rounded-xl px-4 py-2 text-xs text-white focus:outline-none" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-muted-foreground uppercase mb-1">Environment</label>
+                      <select value={(monetizationSettings.metaEnvironment as string) || "production"} onChange={(e) => saveSetting("metaEnvironment", e.target.value)} className="w-full bg-neutral-900 border border-white/5 rounded-xl px-4 py-2 text-xs text-white focus:outline-none">
+                        <option value="development">Development</option>
+                        <option value="production">Production</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-muted-foreground uppercase mb-1">Test Event Code</label>
+                      <input type="text" value={(monetizationSettings.metaTestEventCode as string) || ""} onChange={(e) => saveSetting("metaTestEventCode", e.target.value)} placeholder="TEST12345" className="w-full bg-neutral-900 border border-white/5 rounded-xl px-4 py-2 text-xs text-white focus:outline-none" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-muted-foreground uppercase mb-1">Events API Token (Server-side only)</label>
+                    <input type="password" value={(monetizationSettings.metaEventsApiToken as string) || ""} onChange={(e) => saveSetting("metaEventsApiToken", e.target.value)} placeholder="••••••••••••••••" className="w-full bg-neutral-900 border border-white/5 rounded-xl px-4 py-2 text-xs text-white focus:outline-none mb-4" />
+                    <p className="text-[10px] text-amber-400 mb-4">Never expose this token in client-side code. It is stored securely and used only for server-side Events API calls.</p>
+                    <h4 className="text-xs font-bold text-white mb-2">Supported Events</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {["PageView", "ViewContent", "Search", "Lead", "CompleteRegistration", "Purchase"].map((event) => (
+                        <span key={event} className="px-2 py-1 rounded-lg bg-neutral-800 text-[10px] text-muted-foreground border border-white/5">{event}</span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Instagram Sub-tab */}
+            {monetizationTab === "instagram" && (
+              <div className="glass-card rounded-2xl p-6 border-white/5 space-y-6">
+                <h3 className="font-heading font-bold text-lg text-white">Instagram / Meta Business</h3>
+                <p className="text-xs text-amber-400">Instagram advertising is managed through the Meta ecosystem. Entering an Instagram username does not automatically generate revenue.</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-white">Enable Instagram Integration</span>
+                      <button onClick={() => saveSetting("instagramEnabled", !(monetizationSettings.instagramEnabled as boolean))} className={`p-2 rounded-lg ${(monetizationSettings.instagramEnabled as boolean) ? "bg-primary/20 text-primary" : "bg-neutral-800 text-neutral-400"}`}>
+                        {(monetizationSettings.instagramEnabled as boolean) ? <ToggleRight className="h-5 w-5" /> : <ToggleLeft className="h-5 w-5" />}
+                      </button>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-muted-foreground uppercase mb-1">Instagram Business Account ID</label>
+                      <input type="text" value={(monetizationSettings.instagramBusinessAccountId as string) || ""} onChange={(e) => saveSetting("instagramBusinessAccountId", e.target.value)} placeholder="Instagram Business Account ID" className="w-full bg-neutral-900 border border-white/5 rounded-xl px-4 py-2 text-xs text-white focus:outline-none" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-muted-foreground uppercase mb-1">Meta Business Account ID</label>
+                      <input type="text" value={(monetizationSettings.metaBusinessAccountId as string) || ""} onChange={(e) => saveSetting("metaBusinessAccountId", e.target.value)} placeholder="Meta Business Account ID" className="w-full bg-neutral-900 border border-white/5 rounded-xl px-4 py-2 text-xs text-white focus:outline-none" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-muted-foreground uppercase mb-1">Instagram Profile Reference</label>
+                      <input type="text" value={(monetizationSettings.instagramProfile as string) || ""} onChange={(e) => saveSetting("instagramProfile", e.target.value)} placeholder="@yourbrand" className="w-full bg-neutral-900 border border-white/5 rounded-xl px-4 py-2 text-xs text-white focus:outline-none" />
+                    </div>
+                  </div>
+                  <div className="glass-card rounded-2xl p-6 border-white/5 bg-neutral-950/80">
+                    <h4 className="text-xs font-bold text-white mb-2">How it works</h4>
+                    <ul className="space-y-2 text-xs text-muted-foreground list-disc list-inside">
+                      <li>Instagram advertising is managed through the Meta ecosystem.</li>
+                      <li>Connect your Instagram Business Account and Meta Business Account.</li>
+                      <li>Use Meta Pixel for campaign tracking and attribution.</li>
+                      <li>Promotional links and embeds can be configured in Ad Placements.</li>
+                      <li>Actual Meta Ads API integration requires OAuth/API credentials — structure is ready for future connection.</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Placements Sub-tab */}
+            {monetizationTab === "placements" && (
+              <div className="glass-card rounded-2xl p-6 border-white/5 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-heading font-bold text-lg text-white">Ad Placements</h3>
+                  <button onClick={() => setAdForm({ name: "", platform: "custom", placement: "content_top", device: "all", status: "active", priority: 1, startDate: "", endDate: "", configuration: {} })} className="px-4 py-2 bg-gradient-to-r from-primary to-accent text-background font-bold text-xs rounded-xl flex items-center space-x-2">
+                    <PlusCircle className="h-3 w-3" /><span>Create Advertisement</span>
+                  </button>
+                </div>
+                {Object.keys(adForm).length > 0 && (
+                  <div className="p-4 rounded-xl bg-neutral-900 border border-white/5 space-y-3">
+                    <h4 className="text-xs font-bold text-white">New Advertisement</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <input value={(adForm.name as string) || ""} onChange={(e) => setAdForm({ ...adForm, name: e.target.value })} placeholder="Advertisement Name" className="bg-neutral-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white focus:outline-none" />
+                      <select value={(adForm.platform as string) || "custom"} onChange={(e) => setAdForm({ ...adForm, platform: e.target.value })} className="bg-neutral-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white focus:outline-none">
+                        <option value="adsense">Google AdSense</option>
+                        <option value="meta">Meta</option>
+                        <option value="instagram">Instagram</option>
+                        <option value="custom">Custom</option>
+                      </select>
+                      <select value={(adForm.placement as string) || "content_top"} onChange={(e) => setAdForm({ ...adForm, placement: e.target.value })} className="bg-neutral-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white focus:outline-none">
+                        {["header", "hero_bottom", "content_top", "content_middle", "content_bottom", "sidebar", "footer", "mobile_sticky", "desktop_sticky"].map((p) => <option key={p} value={p}>{p.replace("_", " ")}</option>)}
+                      </select>
+                      <select value={(adForm.device as string) || "all"} onChange={(e) => setAdForm({ ...adForm, device: e.target.value })} className="bg-neutral-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white focus:outline-none">
+                        <option value="all">All Devices</option>
+                        <option value="desktop">Desktop</option>
+                        <option value="mobile">Mobile</option>
+                      </select>
+                      <input value={(adForm.startDate as string) || ""} onChange={(e) => setAdForm({ ...adForm, startDate: e.target.value })} type="date" className="bg-neutral-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white focus:outline-none" />
+                      <input value={(adForm.endDate as string) || ""} onChange={(e) => setAdForm({ ...adForm, endDate: e.target.value })} type="date" className="bg-neutral-950 border border-white/5 rounded-xl px-3 py-2 text-xs text-white focus:outline-none" />
+                    </div>
+                    <div className="flex space-x-2">
+                      <button onClick={handleSaveAd} className="px-4 py-2 bg-gradient-to-r from-primary to-accent text-background font-bold text-xs rounded-xl">Save</button>
+                      <button onClick={() => setAdForm({})} className="px-4 py-2 bg-neutral-800 text-white font-bold text-xs rounded-xl">Cancel</button>
+                    </div>
+                  </div>
+                )}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-left">
+                    <thead><tr className="border-b border-white/5 text-muted-foreground"><th className="py-2 px-3">Name</th><th className="py-2 px-3">Platform</th><th className="py-2 px-3">Placement</th><th className="py-2 px-3">Device</th><th className="py-2 px-3">Status</th><th className="py-2 px-3">Actions</th></tr></thead>
+                    <tbody>
+                      {ads.length === 0 && <tr><td colSpan={6} className="py-6 text-center text-muted-foreground">No advertisements yet. Create one above.</td></tr>}
+                        {ads.map((ad: Record<string, unknown>, index: number) => (
+                          <tr key={(ad.id as string) || `ad-${index}`} className="border-b border-white/5">
+                          <td className="py-2 px-3 text-white">{(ad.name as string) || "Untitled"}</td>
+                          <td className="py-2 px-3 capitalize">{(ad.platform as string) || ""}</td>
+                          <td className="py-2 px-3 capitalize">{(ad.placement as string) || ""}</td>
+                          <td className="py-2 px-3 capitalize">{(ad.device as string) || "all"}</td>
+                          <td className="py-2 px-3"><span className={`px-2 py-1 rounded-lg text-[10px] font-bold ${ad.status === "active" ? "bg-emerald-500/10 text-emerald-400" : ad.status === "draft" ? "bg-amber-500/10 text-amber-400" : "bg-neutral-800 text-neutral-400"}`}>{(ad.status as string) || "draft"}</span></td>
+                          <td className="py-2 px-3 flex space-x-2">
+                            <button onClick={() => setAdForm(ad)} className="p-1 hover:text-white text-muted-foreground"><Edit2 className="h-3 w-3" /></button>
+                            <button onClick={() => deleteAd((ad.id as string) || "")} className="p-1 hover:text-red-400 text-muted-foreground"><Trash2 className="h-3 w-3" /></button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Analytics Sub-tab */}
+            {monetizationTab === "analytics" && (
+              <div className="glass-card rounded-2xl p-6 border-white/5 text-center py-12">
+                <BarChart3 className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                <h3 className="font-heading font-bold text-lg text-white mb-2">Advertising Analytics</h3>
+                <p className="text-xs text-muted-foreground">Analytics connection required. Connect AdSense or Meta to see impressions, clicks, CTR, and revenue data.</p>
+              </div>
+            )}
+
+            {/* Consent Sub-tab */}
+            {monetizationTab === "consent" && (
+              <div className="glass-card rounded-2xl p-6 border-white/5 space-y-6">
+                <h3 className="font-heading font-bold text-lg text-white">Privacy & Advertising Consent</h3>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-white">Require Advertising Consent</span>
+                  <button onClick={() => saveSetting("consentRequired", !(monetizationSettings.consentRequired as boolean))} className={`p-2 rounded-lg ${(monetizationSettings.consentRequired as boolean) ? "bg-primary/20 text-primary" : "bg-neutral-800 text-neutral-400"}`}>
+                    {(monetizationSettings.consentRequired as boolean) ? <ToggleRight className="h-5 w-5" /> : <ToggleLeft className="h-5 w-5" />}
+                  </button>
+                </div>
+                <div className="space-y-3">
+                  {[
+                    { key: "necessary", label: "Necessary", desc: "Required for basic site functionality", required: true },
+                    { key: "analytics", label: "Analytics", desc: "Help us improve by understanding usage", required: false },
+                    { key: "advertising", label: "Advertising", desc: "Personalized ads and tracking", required: false },
+                  ].map((category) => (
+                    <div key={category.key} className="flex items-center justify-between p-4 rounded-xl bg-neutral-900 border border-white/5">
+                      <div>
+                        <p className="text-xs font-semibold text-white">{category.label}</p>
+                        <p className="text-[10px] text-muted-foreground">{category.desc}</p>
+                      </div>
+                      <button disabled={category.required} onClick={() => setConsentGiven({ ...consentGiven, [category.key]: !consentGiven[category.key as keyof typeof consentGiven] })} className={`p-2 rounded-lg ${consentGiven[category.key as keyof typeof consentGiven] ? "bg-primary/20 text-primary" : "bg-neutral-800 text-neutral-400"} ${category.required ? "opacity-50 cursor-not-allowed" : ""}`}>
+                        {consentGiven[category.key as keyof typeof consentGiven] ? <ToggleRight className="h-5 w-5" /> : <ToggleLeft className="h-5 w-5" />}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </main>
+      )}
     </div>
   );
 }

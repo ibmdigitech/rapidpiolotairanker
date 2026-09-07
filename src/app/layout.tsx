@@ -8,6 +8,8 @@ export const metadata: Metadata = {
 
 import { AosInit } from "@/components/AosInit";
 import { SchemaMarkup } from "@/components/SchemaMarkup";
+import { ConsentBanner } from "@/components/ads/ConsentBanner";
+import MetaPixel from "@/components/ads/MetaPixel";
 import { buildOrganizationSchema, buildWebSiteSchema } from "@/lib/schema-builder";
 
 export default function RootLayout({
@@ -75,7 +77,16 @@ export default function RootLayout({
       </head>
       <body className="antialiased min-h-screen flex flex-col bg-background text-foreground">
         <AosInit />
+        {process.env.NEXT_PUBLIC_ADSENSE_PUBLISHER_ID && (
+          <script
+            async
+            src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-${process.env.NEXT_PUBLIC_ADSENSE_PUBLISHER_ID}`}
+            crossOrigin="anonymous"
+          />
+        )}
         {children}
+        {process.env.NEXT_PUBLIC_META_PIXEL_ID && <MetaPixel pixelId={process.env.NEXT_PUBLIC_META_PIXEL_ID} />}
+        <ConsentBanner />
       </body>
     </html>
   );

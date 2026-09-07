@@ -57,7 +57,8 @@ function scanUserMessages(
   return { hits: Array.from(hits), sanitized };
 }
 
-function generateMockSEOArticle(topic: string, isArabic: boolean): string {
+function generateMockSEOArticle(topic: string, isArabic: boolean, errorReason?: string): string {
+  const reasonText = errorReason ? `\n\n**Debug Reason:** ${errorReason}` : "";
   if (isArabic) {
     return `# دليل تحسين محركات البحث الشامل لـ: ${topic}
     
@@ -75,7 +76,9 @@ function generateMockSEOArticle(topic: string, isArabic: boolean): string {
 
 ## 3. تحسين ظهور الموقع لمحركات الإجابة (AEO)
 - كتابة إجابات مباشرة ومباشرة للأسئلة الشائعة حول ${topic}.
-- الحفاظ على نبرة حوارية احترافية تُسهل على نماذج اللغة مثل ChatGPT وGemini العثور على المعلومات وتوثيقها.`;
+- الحفاظ على نبرة حوارية احترافية تُسهل على نماذج اللغة مثل ChatGPT وGemini العثور على المعلومات وتوثيقها.
+---
+*Created dynamically by RankPilot AI Composer Fallback Engine.*${reasonText}`;
   }
 
   return `# The Ultimate SEO & AEO Strategy Guide for: ${topic}
@@ -95,7 +98,7 @@ Incorporate robust JSON-LD schemas (such as FAQPage, Product, and Organization) 
 Write concise 2-3 sentence summaries at the top of main topics regarding ${topic}. AI models extract these directly as references for answer summaries.
 
 ---
-*Created dynamically by RankPilot AI Composer Fallback Engine.*`;
+*Created dynamically by RankPilot AI Composer Fallback Engine.*${reasonText}`;
 }
 
 async function callLLM(
@@ -244,7 +247,7 @@ export async function POST(request: Request) {
         choices: [{
           message: {
             role: "assistant",
-            content: generateMockSEOArticle(topic, isArabic)
+            content: generateMockSEOArticle(topic, isArabic, "No API key configured (process.env.OPENROUTER_API_KEY is missing).")
           }
         }]
       });
@@ -286,7 +289,7 @@ export async function POST(request: Request) {
           choices: [{
             message: {
               role: "assistant",
-              content: generateMockSEOArticle(topic, isArabic) + "\n\n*(Note: Displaying fallback content due to invalid API Credentials)*"
+              content: generateMockSEOArticle(topic, isArabic, "Invalid API Credentials (401 Unauthorized)") + "\n\n*(Note: Displaying fallback content due to invalid API Credentials)*"
             }
           }]
         });
@@ -315,7 +318,7 @@ export async function POST(request: Request) {
       choices: [{
         message: {
           role: "assistant",
-          content: generateMockSEOArticle(topic, isArabic) + notice
+          content: generateMockSEOArticle(topic, isArabic, "All models unavailable or blocked by OpenRouter filters.") + notice
         }
       }]
     });
