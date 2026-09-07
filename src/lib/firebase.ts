@@ -21,7 +21,8 @@ if (missingFirebaseConfig.length > 0) {
   );
 }
 
-if (!firebaseConfig.apiKey.startsWith("AIza")) {
+const firebaseApiKey = firebaseConfig.apiKey;
+if (!firebaseApiKey || !firebaseApiKey.startsWith("AIza")) {
   throw new Error(
     "Invalid Firebase API key format. NEXT_PUBLIC_FIREBASE_API_KEY must be the Web API key from Firebase Project settings, starting with AIza.",
   );
