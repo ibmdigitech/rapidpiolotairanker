@@ -21,12 +21,6 @@ if (missingFirebaseConfig.length > 0) {
   );
 }
 
-if (!firebaseConfig.apiKey.startsWith("AIza")) {
-  throw new Error(
-    "Invalid Firebase API key format. NEXT_PUBLIC_FIREBASE_API_KEY must be the Web API key from Firebase Project settings, starting with AIza.",
-  );
-}
-
 // Initialize Firebase for SSR compatibility
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 const auth = getAuth(app);
